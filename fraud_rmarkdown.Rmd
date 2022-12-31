@@ -1,0 +1,247 @@
+---
+title: "EDA ANALYSIS ON FRAUD DATA"
+author: "Ajulo Joseph Kolawole"
+date: "13/12/2021"
+output: 
+    bookdown::word_document2:
+    fig_caption: true
+---
+
+```{r setup, include= FALSE}
+knitr::opts_chunk$set(
+    echo = FALSE,
+    message = FALSE,
+    warning = FALSE,
+    out.width = "100%",
+    out.height = "500px",
+    fig.align = "center")
+```
+
+```{r}
+# 1.0 Libraries -----------------------------------------------------------
+library(tidyverse)
+library(lubridate)
+library(tidyr)
+library(recipes)
+library(skimr)
+library(knitr)
+library(bookdown)
+library(caret)
+library(dummy)
+library(ggplot2)
+
+```
+
+```{r}
+#2.0 Importing the dataset-------------------------
+fraud_driver_tbl <- read_csv("00_data/assignment_data.csv")
+```
+
+```{r}
+# 3.1 Encode Passenger Columns --------------------------------------------
+passenger_encode_tbl <- fraud_driver_tbl %>% 
+    mutate(passenger1 = ifelse(is.na(passenger1), 0, 1),
+           passenger2 = ifelse(is.na(passenger2), 0, 1)) %>% 
+    
+    mutate(passenger1 = as_factor(passenger1), 
+           passenger2 = as_factor(passenger2))
+
+```
+
+
+```{r}
+# 3.2 Separate the Address ------------------------------------------------
+fraud_address_tbl <- passenger_encode_tbl %>%
+    separate(col = address, 
+             into = c("number", "Location", "place"), 
+             sep = " ") %>%
+    select(-number, -place) %>%
+    mutate(Location = as_factor(Location)) 
+```
+
+
+```{r}
+#3.3 Removing special characters from Location column---------------
+fraud_location_tbl <- fraud_address_tbl %>%
+    
+    mutate(Location = Location %>% str_replace_all('[0-9£$=:)&+_({~^*#%!>@?"/]', "")) %>% 
+
+#3.4 Correcting the text--------------------------------- 
+    
+    mutate(Location = case_when(Location %in% c("BAROW","BARR") ~ "BARROW",TRUE ~ Location)) %>% 
+    mutate(Location = case_when(Location %in% c("CORIB") ~ "CORRIB",TRUE ~ Location )) %>% 
+    mutate(Location = case_when(Location %in% c("BLACKATER","BLACWATER","BLACATER","BLACKWAR") ~ "BLACKWATER",TRUE ~ Location )) %>%
+    mutate(Location = case_when(Location %in% c("BOYN", "BNE") ~ "BOYNE",TRUE ~ Location )) %>%
+    mutate(Location = case_when(Location %in% c("SERN","SEN") ~ "SEVERN",TRUE ~ Location )) %>%
+    mutate(Location = case_when(Location %in% c("THES") ~ "THAMES",TRUE ~ Location )) %>%
+    mutate(Location = case_when(Location %in% c("LFEY","LIY","LFFEY") ~ "LIFFEY",TRUE ~ Location )) %>%
+    mutate(Location = case_when(Location %in% c("SLA","SLEY","SLNEY") ~ "SLANEY",TRUE ~ Location )) %>%
+    mutate(Location = case_when(Location %in% c("CAC") ~ "CAMAC",TRUE ~ Location )) %>% 
+    mutate(Location = case_when(Location %in% c("DODD","DODER") ~ "DODDER",TRUE ~ Location )) %>% 
+    mutate(Location = case_when(Location %in% c("SHANON") ~ "SHANNON",TRUE ~ Location )) %>% 
+    mutate(Location = case_when(Location %in% c("TMES") ~ "THAMES",TRUE ~ Location )) %>% 
+    mutate( Location = replace(Location , match("MARK MCDONAGH", driver), "SLANEY")) %>% 
+#3.5 Converting the repaircost column to numeric type---------------    
+    mutate(repaircost = case_when(repaircost %in% c("approx 2k","approx 2~") ~ "2000",TRUE ~ repaircost )) %>% 
+    mutate(repaircost = case_when(repaircost %in% c("approx 3k") ~ "3000",TRUE ~ repaircost )) %>% 
+    mutate(repaircost = case_when(repaircost %in% c("approx 500","approx 5!!") ~ "500",TRUE ~ repaircost )) %>% 
+    mutate(repaircost = case_when(repaircost %in% c("approx 1k") ~ "1000",TRUE ~ repaircost )) %>% 
+    mutate(repaircost = case_when(repaircost %in% c("above 3k") ~ "3500",TRUE ~ repaircost )) %>% 
+    mutate(repaircost = as.numeric(repaircost)) %>% 
+    drop_na(Location)%>% 
+    view()
+
+```
+
+
+## Problem Statement
+
+
+You have been commissioned as an independent consult to explore motor fraud cases for an insurance 
+company based on a given dataset. You should provide insight to the company on motor fraud cases
+through Exploratory Data Analysis (EDA), you may use feature engineering to aide this process. You 
+should develop a report through R Markdown enabling your work to be reproducible. 
+
+## Solution Summary
+
+The data science team has identified four key areas to aid model development:
+
+1. Develop a range of __exploratory visualisations__ to understand the data after undergoing intensive cleaning procedure 
+
+2. Highlight __any patterns and anomalous behaviour__  
+
+3. __Features__ that may be engineered to improve model performance
+
+4. __Conclusions__ highlighting the insights you have gained
+
+
+### Summery Stats and Exploratory Visualisations
+
+A range of visualisations are developed to analyse temporal variation in building heating load. 
+
+```{r}
+# 4.0 EXPLORING THE DATASET
+    #4.1. Getting the general summery of the tables
+    skim(fraud_location_tbl)
+
+```
+
+
+```{r echo=FALSE, fig.cap = "showing The grouped Fraudflags and their respectives count"}
+ #4.2. General visualization and overview of the fraudflag
+    fraudFlag_tb <- fraud_location_tbl %>%
+        group_by(fraudFlag) %>% 
+        count(fraudFlag)
+    
+    fraudFlag_tb  %>% 
+        
+        ggplot(aes(x = n, y = fraudFlag)) + 
+        
+        geom_col(fill = c("Blue", "Red"))+
+        labs(title = "Graph of grouped fraudflag count", x = "count")
+
+```
+
+
+
+
+From the figure above the FALSE has the highest count and the TRUE has the lowest count. The False indicate the drivers who are not involved in fraud while the True is the identified fraudulent drivers which are less in the data set.
+
+
+
+```{r  echo=FALSE, fig.cap = "The Locations and Number of drivers in each"}
+    # 4.3. The visulatization of the locations
+
+location_pct_tbl <-  fraud_location_tbl %>% 
+    select(driver,Location,fraudFlag) %>% 
+    group_by(Location) %>% 
+    count(fraudFlag) 
+location_pct_tbl
+
+
+location_pct_tbl %>% 
+    mutate(Location = fct_lump(Location)) %>%
+    ggplot(aes(x = n, y = Location , fill = fraudFlag)) + 
+    geom_col() +
+    labs(title = " Graph showing the densites of fraudflag each locations" , x = "fraud frequency")+
+    theme_bw()
+```
+
+
+
+
+Location "Slaney" has the higest number of honest drivers and location "severn" in the other hand has the higest TRUE fraudflag count. Locations "Corrib" and "Dodder" relatively has the lowest fraud cases and also exhibited high FALSE fraudflag count. "Suir" and "Slaney" has a significant fraud rate also.
+
+
+
+
+```{r  echo=FALSE, fig.cap = "Plot showing Age range as an indicator of Fraud"}
+#4.4 exploring and Vistualising the effect the age on the FraudFlag
+
+  age_range_tb <- fraud_location_tbl %>% 
+    mutate(age_range = case_when (age >= 20 &  age<=25 ~ "21-25",
+                                  age >= 26 &  age <= 35 ~ "26-35",
+                                  age >= 36 &  age <= 45 ~ "36-45",
+                                  age >= 46 &  age <= 55 ~ "46-55",
+                                  age >= 56 &  age <= 86 ~ "55-80")) %>% 
+    mutate(age_range = as_factor(age_range))  
+Age_fraud1 <- age_range_tb %>% 
+    select(age_range,repaircost,fraudFlag) %>% 
+    group_by(repaircost, age_range) %>% 
+    count(fraudFlag) %>% 
+mutate(age_range = as_factor(age_range)) 
+
+Age_fraud1 %>% 
+    ggplot(aes(x = age_range , y =n ,fill= fraudFlag)) + 
+    geom_boxplot(colour= "gray" )+
+    labs(title = "Box plot showing age range of both fruad and non- fraud drivers" , y ="fraud count")+
+    theme_bw()   
+```
+
+
+ For 'TRUE' fraudflag case which indicates only fraudulent drivers. The age range of 26-35 and 36-45 have the highest fraud cases. though 36-45 years range have have the highest fraud counts but more drivers of age range 26-35 have the highest fraud cases. 
+ Drivers of age 55-80 have the least fraud case , even thought they share same lowest points with 46-50 years but then more  46-55 years drivers have higher fraud cases than 46-50
+
+
+
+
+```{r echo=FALSE, fig.cap = "The visualisation of the effect of passengers on repaircost hence fraudflag"}
+#4.5 exploring the effect repaircost via boxplot
+fraud_location_tbl %>% 
+  
+    filter( passenger1 %in% c("1") & passenger2 %in% c("1")) %>% 
+   distinct(repaircost,fraudFlag) %>% 
+  
+     ggplot(aes(x = fraudFlag, y = repaircost)) + 
+    
+    geom_boxplot(fill = c("Blue", "Red"))+
+    
+labs(title = "The boxplot of repaircost and fraudflag for two passengers")+
+    theme_bw()
+
+```
+
+
+The box plot above is derived for drivers with two passengers who are likely to be involved in fraud or otherwise based on their respective repair cost. The "False" of the falseflag illustrates a driver is not involve in fraud , and in this case the drivers pays even as high as 3500 as repair cost.Though half of the drivers in this case pays between 1000 and 3000 as repair cost.   
+   
+The fraudulent driver pays up to 2000 as repair cost. The median cost is about 1200 and as low as 250. we can assume based on the analysis before the plotting that we are dealing with two passengers and 50 percent of the fraudulent drivers pays above 500 and up to 1500 as repair cost.We can deduce here that the repair cost has a relatively low effect on fraud having in mind its a two passenger case.
+
+
+
+### Engineered Features
+
+Features can be engineered based on the insights to improve predictive model performance. Feature engineering can be viewed as the process of transforming raw data into features that better represent the underlying problem to predictive models. Important features or variables are engineered from the data to better represent the underlying analysis context to the predictive models.
+
+number of passengers was encoded from name to 0,1.
+
+You can represent the insights from the EDA process to the respective model through a binary encoding process. 
+
+### Conclusions from Exploratory Analysis
+
+The conclusions from the analysis are as follows:
+
+*Locations generally all the address has both fruad and no fraud driver but location "Severn" has more higest fraud cases therefore attentions needs to be taken there.
+
+*Drivers age being an important factor for fraud hence more younger fraudulent between ages 26-40 exhibits highest fraud rate
+
+*The higher the repaircost doesnt mean the driver is frudulent. Drivers with more than two passengers involve in fraud pays approx 2000 as repaircost
